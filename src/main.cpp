@@ -2,6 +2,7 @@
 #include "InOut.h"
 
 void setup(void) {
+    size(200, 200);          // ← THÊM DÒNG NÀY
     out("hello IOS!!!");
 }
 
@@ -11,9 +12,8 @@ void draw(void) {
     fill(100);
     box(10, 20, 30, 40);
 
-    box(50, 60, 20, 20) {
-        fill(255, 0, 0);
-    }
+    fill(255, 0, 0);
+    box(50, 60, 20, 20);
 
     fill(0, 128, 255);
     circle(70, 70, 10);
