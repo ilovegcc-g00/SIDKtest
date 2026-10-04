@@ -9,9 +9,9 @@
 int main(void) {
     char name[64];
     
-    in("your name? ", name, sizeof name);     // input
+    in("your name? ", name, sizeof name); // input
     
-    out("Hello %s!\n", name);                 // print (output)
+    out("Hello %s!\n", name);             // print (output)
     return 0;
 }
 ```
@@ -21,11 +21,11 @@ int main(void) {
 #include "Canvas.h"
 //NOTE:
 #include <algorithm> ❌
-#include <vector>    ⚠️
+#include <vector>    ❌
 
 
 void setup(void) {
-    size(100, 100);
+    size(100, 100);  // resolution
 }
 
 void draw(void) {
