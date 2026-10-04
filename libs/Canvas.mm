@@ -102,6 +102,7 @@ void canvas_box_end(void) {
 @implementation CanvasView {
     CALayer       *_imgLayer;
     CADisplayLink *_link;
+    BOOL           _setupDone;
 }
 
 - (instancetype)initWithFrame:(CGRect)frame {
@@ -110,7 +111,6 @@ void canvas_box_end(void) {
         self.backgroundColor = UIColor.blackColor;
         self.layer.magnificationFilter = @"nearest";
         self.layer.minificationFilter  = @"nearest";
-
         _imgLayer = [CALayer layer];
         _imgLayer.frame = self.bounds;
         _imgLayer.magnificationFilter = @"nearest";
@@ -127,12 +127,19 @@ void canvas_box_end(void) {
 }
 
 - (void)render {
+    // Fallback: nếu setup() chưa gọi size() → tự set 200x200
+    if (!g_px) {
+        size((int)self.bounds.size.width  ?: 200,
+             (int)self.bounds.size.height ?: 200);
+        background(255, 255, 255);
+    }
     if (!g_px || g_w <= 0 || g_h <= 0) return;
+
     CGColorSpaceRef cs = CGColorSpaceCreateDeviceRGB();
     CGContextRef ctx = CGBitmapContextCreate(
         (void *)g_px, g_w, g_h,
         8, g_w * 4, cs,
-        kCGBitmapByteOrder32Big | kCGImageAlphaPremultipliedLast);
+        kCGBitmapByteOrder32Little | kCGImageAlphaPremultipliedLast);  // ← FIX
     if (ctx) {
         CGImageRef img = CGBitmapContextCreateImage(ctx);
         CGContextRelease(ctx);
@@ -146,6 +153,11 @@ void canvas_box_end(void) {
 
 - (void)start {
     if (_link) return;
+    // Gọi setup() TRƯỚC khi bắt đầu vẽ
+    if (!_setupDone) {
+        _setupDone = YES;
+        setup();
+    }
     _link = [CADisplayLink displayLinkWithTarget:self selector:@selector(_tick)];
     [_link addToRunLoop:NSRunLoop.mainRunLoop forMode:NSDefaultRunLoopMode];
 }
@@ -155,28 +167,16 @@ void canvas_box_end(void) {
 
 @end
 
-@interface CanvasAppViewController : UIViewController
-@property (nonatomic, strong) CanvasView *canvas;
-@end
-
 @implementation CanvasAppViewController
 
 - (void)viewDidLoad {
     [super viewDidLoad];
-
     self.canvas = [[CanvasView alloc] initWithFrame:self.view.bounds];
     self.canvas.autoresizingMask =
         UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     [self.view addSubview:self.canvas];
-
     self.canvas.onDraw = ^{ draw(); };
-    [self.canvas start];
-}
-
-- (void)viewDidAppear:(BOOL)animated {
-    [super viewDidAppear:animated];
-    static dispatch_once_t once;
-    dispatch_once(&once, ^{ setup(); });
+    [self.canvas start];  // setup() giờ được gọi bên trong start
 }
 
 @end
