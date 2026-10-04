@@ -19,6 +19,10 @@ int main(void) {
 - Canvas:
 ```C
 #include "Canvas.h"
+//NOTE:
+#include <algorithm> ❌
+#include <vector>    ⚠️
+
 
 void setup(void) {
     size(100, 100);
