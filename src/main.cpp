@@ -1,7 +1,7 @@
-#include "libs/IOstream.h"
+#include "InOut.h"
 
 int main() {
     
-    print("hello world!!!");
+    out("hello world!!!");
     return 0;
 }
