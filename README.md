@@ -3,7 +3,7 @@
 ### Tutorial
 
 - InOut:
-   ```C
+```C
 #include "InOut.h"
 
 int main(void) {
@@ -14,6 +14,6 @@ int main(void) {
     out("Hello %s!\n", name);                 // print (output)
     return 0;
 }
-   ```
+```
 
 -
