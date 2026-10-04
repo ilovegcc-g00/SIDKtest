@@ -45,3 +45,15 @@ void draw(void) {
     line(0, 0, 99, 99);
 }
 ```
+
+- Delay:
+```C
+#include "Delay.h"
+
+void worker(void *arg) {
+    out("3\n"); delay_s(1);
+    out("2\n"); delay_s(1);
+    out("1\n"); delay_s(1);
+    out("Go!\n");
+}
+```
