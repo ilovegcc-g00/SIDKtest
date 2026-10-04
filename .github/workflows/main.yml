@@ -1,0 +1,205 @@
+name: Build SIDK IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  build:
+    runs-on: macos-14
+    
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      
+      - name: Inspect devv's code
+        run: |
+          echo "=== Files in repo ==="
+          ls -la
+          echo ""
+          echo "=== main.cpp (full) ==="
+          cat main.cpp 2>/dev/null || echo "NOT FOUND"
+          echo ""
+          echo "=== Headers ==="
+          for f in *.h *.hpp; do
+            if [ -f "$f" ]; then
+              echo "--- $f ---"
+              cat "$f"
+              echo ""
+            fi
+          done
+      
+      - name: Detect entry point style
+        id: detect
+        run: |
+          if grep -q "int main" main.cpp 2>/dev/null; then
+            echo "style=standard_main" >> $GITHUB_OUTPUT
+          elif grep -qE "(void|int)\s+setup\s*\(" main.cpp 2>/dev/null; then
+            echo "style=setup_draw" >> $GITHUB_OUTPUT
+          else
+            echo "style=unknown" >> $GITHUB_OUTPUT
+          fi
+          echo "Detected style: $(cat $GITHUB_OUTPUT)"
+      
+      - name: Setup app bundle
+        run: mkdir -p build/Payload/SIDK.app
+      
+      - name: Create iOS wrapper (standard main)
+        if: steps.detect.outputs.style == 'standard_main'
+        run: |
+          cat > ios_entry.mm << 'EOF'
+          #import <UIKit/UIKit.h>
+          
+          #define main sidk_main
+          #include "main.cpp"
+          #undef main
+          
+          @interface AppDelegate : UIResponder <UIApplicationDelegate>
+          @property (strong, nonatomic) UIWindow *window;
+          @end
+          
+          @implementation AppDelegate
+          - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)opts {
+              self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+              UIViewController *vc = [[UIViewController alloc] init];
+              vc.view.backgroundColor = [UIColor blackColor];
+              self.window.rootViewController = vc;
+              [self.window makeKeyAndVisible];
+              
+              dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                  sidk_main();
+              });
+              return YES;
+          }
+          @end
+          
+          int main(int argc, char *argv[]) {
+              @autoreleasepool {
+                  return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
+              }
+          }
+          EOF
+      
+      - name: Create iOS wrapper (setup/draw)
+        if: steps.detect.outputs.style == 'setup_draw'
+        run: |
+          cat > ios_entry.mm << 'EOF'
+          #import <UIKit/UIKit.h>
+          
+          #define main sidk_main
+          #include "main.cpp"
+          #undef main
+          
+          @interface AppDelegate : UIResponder <UIApplicationDelegate>
+          @property (strong, nonatomic) UIWindow *window;
+          @end
+          
+          @implementation AppDelegate
+          - (BOOL)application:(UIApplication *)app didFinishLaunchingWithOptions:(NSDictionary *)opts {
+              self.window = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+              UIViewController *vc = [[UIViewController alloc] init];
+              vc.view.backgroundColor = [UIColor blackColor];
+              self.window.rootViewController = vc;
+              [self.window makeKeyAndVisible];
+              
+              dispatch_async(dispatch_get_global_queue(DISPATCH_QUEUE_PRIORITY_DEFAULT, 0), ^{
+                  setup();
+                  while (1) { draw(); }
+              });
+              return YES;
+          }
+          @end
+          
+          int main(int argc, char *argv[]) {
+              @autoreleasepool {
+                  return UIApplicationMain(argc, argv, nil, NSStringFromClass([AppDelegate class]));
+              }
+          }
+          EOF
+      
+      - name: Fallback wrapper (unknown)
+        if: steps.detect.outputs.style == 'unknown'
+        run: |
+          echo "Không nhận diện được style. Dùng wrapper rỗng."
+          cat > ios_entry.mm << 'EOF'
+          #import <UIKit/UIKit.h>
+          int main(int argc, char *argv[]) {
+              @autoreleasepool {
+                  UIWindow *w = [[UIWindow alloc] initWithFrame:[[UIScreen mainScreen] bounds]];
+                  UIViewController *vc = [[UIViewController alloc] init];
+                  vc.view.backgroundColor = [UIColor redColor];
+                  w.rootViewController = vc;
+                  [w makeKeyAndVisible];
+                  return UIApplicationMain(argc, argv, nil, nil);
+              }
+          }
+          EOF
+      
+      - name: Create Info.plist
+        run: |
+          cat > build/Payload/SIDK.app/Info.plist << 'EOF'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>CFBundleExecutable</key><string>SIDK</string>
+              <key>CFBundleIdentifier</key><string>com.devv.sidk</string>
+              <key>CFBundleName</key><string>SIDK</string>
+              <key>CFBundlePackageType</key><string>APPL</string>
+              <key>CFBundleShortVersionString</key><string>1.0</string>
+              <key>CFBundleVersion</key><string>1</string>
+              <key>LSRequiresIPhoneOS</key><true/>
+              <key>MinimumOSVersion</key><string>14.0</string>
+              <key>UIDeviceFamily</key><array><integer>1</integer><integer>2</integer></array>
+              <key>UISupportedInterfaceOrientations</key>
+              <array>
+                  <string>UIInterfaceOrientationPortrait</string>
+                  <string>UIInterfaceOrientationLandscapeLeft</string>
+                  <string>UIInterfaceOrientationLandscapeRight</string>
+              </array>
+          </dict>
+          </plist>
+          EOF
+      
+      - name: Compile
+        run: |
+          SDK=$(xcrun --sdk iphoneos --show-sdk-path)
+          echo "SDK: $SDK"
+          
+          xcrun -sdk iphoneos clang++ \
+            -target arm64-apple-ios14.0 \
+            -isysroot "$SDK" \
+            -framework UIKit \
+            -framework Foundation \
+            -O2 -std=c++17 \
+            -I. \
+            -o build/Payload/SIDK.app/SIDK \
+            ios_entry.mm 2>&1 | tee compile.log
+          
+          if [ ! -f build/Payload/SIDK.app/SIDK ]; then
+            echo ""
+            echo "╔════════════════════════════════════════╗"
+            echo "║  BUILD FAILED — LỖI TẠI DEVV =]]]     ║"
+            echo "╚════════════════════════════════════════╝"
+            echo ""
+            echo "=== Compile errors ==="
+            cat compile.log
+            exit 1
+          fi
+          
+          file build/Payload/SIDK.app/SIDK
+          ls -lh build/Payload/SIDK.app/SIDK
+      
+      - name: Package IPA
+        run: |
+          cd build
+          zip -r SIDK.ipa Payload
+          ls -lh SIDK.ipa
+      
+      - name: Upload IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: SIDK-ipa
+          path: build/SIDK.ipa
+          retention-days: 30
